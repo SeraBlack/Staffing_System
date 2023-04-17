@@ -1,6 +1,5 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { EditOutlined } from "@ant-design/icons";
-import { Button, Form, Input, Space } from "antd";
+import React, { useEffect, useRef, useState } from "react";
+import { Button, Input, Space } from "antd";
 import * as echarts from "echarts";
 // import styled from "styled-components";
 import * as mapboxgl from "mapbox-gl";
@@ -9,49 +8,52 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import "./index.css";
 import Pdata from '../../mock/pdata'
 import moment from "moment";
-
-export default function Index() {
-  let myChart;
-  let option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      },
-      formatter: function (params) {
-        return params[0].name + `<br/>上班时间：${params[0].data[1]}<br/>下班时间：${params[0].data[2]}`
-      }
+let option = {
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: {
+      type: 'shadow'
     },
-    xAxis: {
-      show: true,
-      type: "category",
+    formatter: function (params) {
+      return params[0].name + `<br/>上班时间：${params[0].data[1]}<br/>下班时间：${params[0].data[2]}`
+    }
+  },
+  xAxis: {
+    show: true,
+    type: "category",
+    data: []
+  }
+  ,
+  yAxis: {
+    show: true,
+    type: "time",
+    splitNumber: 15,
+    axisLabel: {
+      formatter: function (value) {
+        return moment(value).format("kk:mm:ss")
+      }
+    }
+  },
+  series: [
+    {
+      type: 'candlestick',
       data: []
     }
-    ,
-    yAxis: {
-      show: true,
-      type: "time",
-      splitNumber: 20,
-      axisLabel: {
-        formatter: function (value) {
-          return moment(value).format("kk:mm:ss")
-        }
-      }
-    },
-    series: [
-      {
-        type: 'candlestick',
-        data: []
-      }
-    ]
-  };
+  ]
+};
+export default function Index() {
+  let myChart;
+
   const marker1 = useRef()
   const map = useRef()
 
   const [lngValue, setLngValue] = useState('116.34663062322568');
   const [latValue, setLatValue] = useState('40.10471411048371');
+  const [startTime, setstartTime] = useState('08:00:00');
+  const [endTime, setendTime] = useState('22:00:00');
   const [RadiusValue, setRadiusValue] = useState('500');
 
+  //点击预览变更的中心点和经纬度
   function preview() {
     console.log("map.current,", map.current)
     // 中心点，109行定义的
@@ -82,17 +84,40 @@ export default function Index() {
 
   }
 
+  //点击变更条状图条件
+  const handleHit = () => {
+    myChart = echarts.init(document.getElementById("mainForm"));
+    const tody = moment().format('YYYY-MM-DD')
+    // const up = tody + ' 08:00:00'
+    const up = tody + ` ${startTime}`
+    // const down = tody + ' 22:00:00'
+    const down = tody + ` ${endTime}`
+    option.series[0].data.forEach(item=>{
+      item.splice(2,2,up,down)
+    })
+    console.log(option.series[0].data)
+    Pdata.forEach((item) => {
+      // option.series[0].data.push([item.startTime, item.endTime, up, down])
+      // option.xAxis.data.push(item.name)
+      // console.dir(startTime);
+    })
+    myChart.setOption(option);
+  };
+
   useEffect(() => {
     if (!map.current) {
       myChart = echarts.init(document.getElementById("mainForm"));
       option.series[0].data = []
       const tody = moment().format('YYYY-MM-DD')
-      const up = tody + ' 08:00:00'
-      const down = tody + ' 22:00:00'
+      // const up = tody + ' 08:00:00'
+      const up = tody + ` ${startTime}`
+      // const down = tody + ' 22:00:00'
+      const down = tody + ` ${endTime}`
 
       Pdata.forEach((item) => {
         option.series[0].data.push([item.startTime, item.endTime, up, down])
         option.xAxis.data.push(item.name)
+        console.dir(startTime);
       })
       myChart.setOption(option);
 
@@ -231,13 +256,7 @@ export default function Index() {
 
   }, []);
 
-  //点击变更条状图条件
-  const handleHit = () => {
-    option.series[0].data = [
-      0, 9, 1245, 1530, 1376, 1376, 1511, 16, 1856, 1495, 1292,
-    ];
-    myChart.setOption(option);
-  };
+
 
   // 计算工时
   const computedWorkTime = (a, b) => {
@@ -668,15 +687,23 @@ export default function Index() {
                 <div id="top1">
                   <div className="rig">
                     <div id="mainForm" ></div>
-
+                    <div className="IBElm">
+                      <Input style={{ width: 200, marginRight: 10 }} placeholder="经度" value={startTime} onChange={(e) => { setstartTime(e.target.value) }}></Input>
+                      <Input style={{ width: 200, marginRight: 10 }} placeholder="纬度" value={endTime} onChange={(e) => { setendTime(e.target.value) }}></Input>
+                      {/* <Input style={{ width: 150, marginRight: 10 }} placeholder="签到范围" value={RadiusValue} onChange={(e) => { setRadiusValue(e.target.value) }}></Input> */}
+                      <Space wrap>
+                        <Button type="primary" onClick={handleHit}>预览</Button>
+                        <Button type="primary">应用中心点及签到范围</Button>
+                      </Space>
+                    </div>
                   </div>
 
 
                   <div>
                     {/* 这是地图组件 */}
                     <div className="IBElm">
-                      <Input style={{ width: 150, marginRight: 10 }} placeholder="经度" value={lngValue}></Input>
-                      <Input style={{ width: 150, marginRight: 10 }} placeholder="纬度" value={latValue}></Input>
+                      <Input style={{ width: 150, marginRight: 10 }} placeholder="经度" value={lngValue} onChange={(e) => { setLngValue(e.target.value) }}></Input>
+                      <Input style={{ width: 150, marginRight: 10 }} placeholder="纬度" value={latValue} onChange={(e) => { setLatValue(e.target.value) }}></Input>
                       <Input style={{ width: 150, marginRight: 10 }} placeholder="签到范围" value={RadiusValue} onChange={(e) => { setRadiusValue(e.target.value) }}></Input>
                       <Space wrap>
                         <Button type="primary" onClick={preview}>预览</Button>

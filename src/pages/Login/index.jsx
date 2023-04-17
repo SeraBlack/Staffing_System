@@ -97,6 +97,7 @@ const App = () => {
               type="primary"
               htmlType="submit"
               className="login-form-button"
+              href="/Home"
             >
               Log in
             </Button>
