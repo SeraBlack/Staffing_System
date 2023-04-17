@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EditOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Space } from "antd";
 import * as echarts from "echarts";
@@ -7,98 +7,53 @@ import * as mapboxgl from "mapbox-gl";
 import * as turf from "@turf/turf"; // 处理地理数据的js库
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./index.css";
+import Pdata from '../../mock/pdata'
+import moment from "moment";
 
 export default function Index() {
   let myChart;
   let option = {
-    title: {
-      text: "Accumulated Waterfall Chart",
-    },
     tooltip: {
-      trigger: "axis",
+      trigger: 'axis',
       axisPointer: {
-        type: "shadow",
+        type: 'shadow'
       },
       formatter: function (params) {
-        let tar;
-        if (params[1] && params[1].value !== "-") {
-          tar = params[1];
-        } else {
-          tar = params[2];
-        }
-        return tar && tar.name + "<br/>" + tar.seriesName + " : " + tar.value;
-      },
-    },
-    legend: {
-      data: ["Expenses", "Income"],
-    },
-    grid: {
-      left: "3%",
-      right: "4%",
-      bottom: "3%",
-      containLabel: true,
+        return params[0].name + `<br/>上班时间：${params[0].data[1]}<br/>下班时间：${params[0].data[2]}`
+      }
     },
     xAxis: {
+      show: true,
       type: "category",
-      data: (function () {
-        let list = [];
-        for (let i = 1; i <= 11; i++) {
-          list.push("Nov " + i);
-        }
-        return list;
-      })(),
-    },
+      data: []
+    }
+    ,
     yAxis: {
-      type: "value",
+      show: true,
+      type: "time",
+      splitNumber: 20,
+      axisLabel: {
+        formatter: function (value) {
+          return moment(value).format("kk:mm:ss")
+        }
+      }
     },
     series: [
       {
-        name: "Placeholder",
-        type: "bar",
-        stack: "Total",
-        silent: true,
-        itemStyle: {
-          borderColor: "transparent",
-          color: "transparent",
-        },
-        emphasis: {
-          itemStyle: {
-            borderColor: "transparent",
-            color: "transparent",
-          },
-        },
-        data: [0, 900, 1245, 1530, 1376, 1376, 1511, 1689, 1856, 1495, 1292],
-      },
-      {
-        name: "Income",
-        type: "bar",
-        stack: "Total",
-        label: {
-          show: true,
-          position: "top",
-        },
-        data: [900, 345, 393, "-", "-", 135, 178, 286, "-", "-", "-"],
-      },
-      {
-        name: "Expenses",
-        type: "bar",
-        stack: "Total",
-        label: {
-          show: true,
-          position: "bottom",
-        },
-        data: ["-", "-", "-", 108, 154, "-", "-", "-", 119, 361, 203],
-      },
-    ],
+        type: 'candlestick',
+        data: []
+      }
+    ]
   };
-
-  let map
+  const marker1 = useRef()
+  const map = useRef()
 
   const [lngValue, setLngValue] = useState('116.34663062322568');
   const [latValue, setLatValue] = useState('40.10471411048371');
   const [RadiusValue, setRadiusValue] = useState('500');
 
   function preview() {
+    console.log("map.current,", map.current)
     // 中心点，109行定义的
     const center = [lngValue, latValue];
     // 半径，单位是千米，这里是500米
@@ -113,7 +68,7 @@ export default function Index() {
     // 用导入的turf地理空间处理的js库，在地图上画了个圆
     const circle = turf.circle(center, radius, options);
 
-    const sourceObject = map.getSource("circle-data"); // 获取一下画的那个圆的数据
+    const sourceObject = map.current.getSource("circle-data"); // 获取一下画的那个圆的数据
 
     // data拿到了之前的geojson中的feature
     const data = { ...sourceObject._data };
@@ -121,148 +76,159 @@ export default function Index() {
     data.features[0] = circle
     sourceObject.setData(data)
 
-
-
-    map.flyTo(center)
+    map.current.flyTo({ center, zoom: 14 });
+    marker1.current.remove();
+    marker1.current = new mapboxgl.Marker().setLngLat(center).addTo(map.current);
 
   }
 
   useEffect(() => {
-    console.log(">>>>>>>")
-    myChart = echarts.init(document.getElementById("mainForm"));
-    myChart.setOption(option);
+    if (!map.current) {
+      myChart = echarts.init(document.getElementById("mainForm"));
+      option.series[0].data = []
+      const tody = moment().format('YYYY-MM-DD')
+      const up = tody + ' 08:00:00'
+      const down = tody + ' 22:00:00'
 
-    //选取一个需要打卡的经纬度
-    const monument = [lngValue, latValue];
-    //在官网注册后可获得一个Token
-    mapboxgl.accessToken =
-      "pk.eyJ1IjoiYTk2NDMwNTkyNyIsImEiOiJjbDNzMWpwOTQxaWE0M2Rwbm1naHFhc3gzIn0.Z3mXHNQqT3YUbIhhGJCSLA";
+      Pdata.forEach((item) => {
+        option.series[0].data.push([item.startTime, item.endTime, up, down])
+        option.xAxis.data.push(item.name)
+      })
+      myChart.setOption(option);
 
-    // 创建一个地图
-    map = new mapboxgl.Map({
-      // container ID，找一个id为map的div
-      container: "map",
-      // style URL，一些地图样式的id，以后会有各种好看的地图样式
-      style: "mapbox://styles/mapbox/streets-v12",
-      // lng,longitude,经度
-      // starting position [lng, lat]，地图的中心点
-      center: monument,
-      // starting zoom，放大比例，一般放到10-15之间
-      zoom: 14,
-      doubleClickZoom: false
-    });
+      //选取一个需要打卡的经纬度
+      const monument = [lngValue, latValue];
+      //在官网注册后可获得一个Token
+      mapboxgl.accessToken =
+        "pk.eyJ1IjoiYTk2NDMwNTkyNyIsImEiOiJjbDNzMWpwOTQxaWE0M2Rwbm1naHFhc3gzIn0.Z3mXHNQqT3YUbIhhGJCSLA";
 
-    function getCenterValue(e) {
-      console.log(e.lngLat);
-      const { lng, lat } = e.lngLat
+      // 创建一个地图
 
-      setLngValue(lng);
-      setLatValue(lat);
-      // useRadiusValue(RadiusValue)
-    };
-
-
-    map.on('dblclick', getCenterValue);
-
-    // #region
-    //     // create the popup
-    //    const popup = new mapboxgl.Popup({ offset: 25 }).setText(
-    //     'Construction on the Washington Monument began in 1848.'
-    //     );
-
-    //     // create DOM element for the marker
-    //     const el = document.createElement('div');
-    //     // el.id = 'marker';
-    //     el.style.width = "10px"
-    //     el.style.height = "10px"
-    //     el.style.background = "#fff000"
-
-    //     // create the marker
-    //     new mapboxgl.Marker(el)
-    //     .setLngLat(monument)
-    //     .setPopup(popup) // sets a popup on this marker
-    //     .addTo(map);
-
-    // #endregion
-
-    // marker是那个水滴，那个标记，这是默认的
-    const marker1 = new mapboxgl.Marker().setLngLat(monument).addTo(map);
-
-    // 中心点，109行定义的
-    const center = monument;
-    // 半径，单位是千米，这里是500米
-    const radius = 0.5;
-    const options = {
-      // 输入越大越像圆，一般选取32，不然会影响性能
-      steps: 32,
-      units: "kilometers",
-      properties: { foo: "bar" },
-    };
-
-    // 用导入的turf地理空间处理的js库，在地图上画了个圆
-    const circle = turf.circle(center, radius, options);
-
-    // 相当于js里面的window load
-    map.on("load", () => {
-      // 添加数据，将画好的圆传入（174行）
-      map.addSource("circle-data", {
-        // geojson是公认的地理数据格式
-        type: "geojson",
-        data: {
-          //
-          type: "FeatureCollection",
-          features: [circle],
-        },
+      map.current = new mapboxgl.Map({
+        // container ID，找一个id为map的div
+        container: "map",
+        // style URL，一些地图样式的id，以后会有各种好看的地图样式
+        style: "mapbox://styles/mapbox/streets-v12",
+        // lng,longitude,经度
+        // starting position [lng, lat]，地图的中心点
+        center: monument,
+        // starting zoom，放大比例，一般放到10-15之间
+        zoom: 14,
+        doubleClickZoom: false
       });
 
-      // 添加图层
-      map.addLayer({
-        // 图层名字，后期方便查找
-        id: "circles-layer",
-        // 填充它
-        type: "fill",
-        // 绘制什么样的数据（169行起的名字）
-        source: "circle-data",
-        paint: {
-          // 绘制颜色
-          "fill-color": "#605dff",
-          // 绘制透明度
-          "fill-opacity": 0.5,
-        },
+      function getCenterValue(e) {
+        console.log(e.lngLat);
+        const { lng, lat } = e.lngLat
+
+        setLngValue(lng);
+        setLatValue(lat);
+        // useRadiusValue(RadiusValue)
+      };
+
+      map.current.on('dblclick', getCenterValue);
+
+      // #region
+      //     // create the popup
+      //    const popup = new mapboxgl.Popup({ offset: 25 }).setText(
+      //     'Construction on the Washington Monument began in 1848.'
+      //     );
+
+      //     // create DOM element for the marker
+      //     const el = document.createElement('div');
+      //     // el.id = 'marker';
+      //     el.style.width = "10px"
+      //     el.style.height = "10px"
+      //     el.style.background = "#fff000"
+
+      //     // create the marker
+      //     new mapboxgl.Marker(el)
+      //     .setLngLat(monument)
+      //     .setPopup(popup) // sets a popup on this marker
+      //     .addTo(map.current);
+
+      // #endregion
+
+      // marker是那个水滴，那个标记，这是默认的
+      marker1.current = new mapboxgl.Marker().setLngLat(monument).addTo(map.current);
+
+      // 中心点，109行定义的
+      const center = monument;
+      // 半径，单位是千米，这里是500米
+      const radius = 0.5;
+      const options = {
+        // 输入越大越像圆，一般选取32，不然会影响性能
+        steps: 32,
+        units: "kilometers",
+        properties: { foo: "bar" },
+      };
+
+      // 用导入的turf地理空间处理的js库，在地图上画了个圆
+      const circle = turf.circle(center, radius, options);
+
+      // 相当于js里面的window load
+      map.current.on("load", () => {
+        // 添加数据，将画好的圆传入（174行）
+        map.current.addSource("circle-data", {
+          // geojson是公认的地理数据格式
+          type: "geojson",
+          data: {
+            //
+            type: "FeatureCollection",
+            features: [circle],
+          },
+        });
+
+        // 添加图层
+        map.current.addLayer({
+          // 图层名字，后期方便查找
+          id: "circles-layer",
+          // 填充它
+          type: "fill",
+          // 绘制什么样的数据（169行起的名字）
+          source: "circle-data",
+          paint: {
+            // 绘制颜色
+            "fill-color": "#605dff",
+            // 绘制透明度
+            "fill-opacity": 0.5,
+          },
+        });
+
+        // 为图层添加了框
+        map.current.addLayer({
+          id: "line-layer",
+          type: "line",
+          source: "circle-data",
+          paint: {
+            "line-color": "#000000",
+            "line-width": 2,
+          },
+        });
+
+        // // 是否显示那个框，改数据的时候会用到
+        // map.current.setLayoutProperty("line-layer", "visibility", "none");
+
+        // // 如果要修改数据
+        // const sourceObject = map.current.getSource("circle-data"); // 获取一下画的那个圆的数据
+
+        // // data拿到了之前的geojson中的feature
+        // const data = { ...sourceObject._data };
+
+        // // 半径设置为一千米
+        // const radius2 = 1;
+
+        // // 重写一个数据（只变了半径，中心点和画圆的参数没变）
+        // const circle2 = turf.circle(center, radius2, options);
+
+        // // 将新写好的数据覆盖features的第0个原来的数据（也只有第0个）
+        // data.features[0] = circle2;
+
+        // // 把重写好的data重新给回sourceObject，最终的效果是改大了半径
+        // sourceObject.setData(data);
       });
+    }
 
-      // 为图层添加了框
-      map.addLayer({
-        id: "line-layer",
-        type: "line",
-        source: "circle-data",
-        paint: {
-          "line-color": "#000000",
-          "line-width": 2,
-        },
-      });
-
-      // // 是否显示那个框，改数据的时候会用到
-      // map.setLayoutProperty("line-layer", "visibility", "none");
-
-      // // 如果要修改数据
-      // const sourceObject = map.getSource("circle-data"); // 获取一下画的那个圆的数据
-
-      // // data拿到了之前的geojson中的feature
-      // const data = { ...sourceObject._data };
-
-      // // 半径设置为一千米
-      // const radius2 = 1;
-
-      // // 重写一个数据（只变了半径，中心点和画圆的参数没变）
-      // const circle2 = turf.circle(center, radius2, options);
-
-      // // 将新写好的数据覆盖features的第0个原来的数据（也只有第0个）
-      // data.features[0] = circle2;
-
-      // // 把重写好的data重新给回sourceObject，最终的效果是改大了半径
-      // sourceObject.setData(data);
-    });
   }, []);
 
   //点击变更条状图条件
@@ -272,6 +238,14 @@ export default function Index() {
     ];
     myChart.setOption(option);
   };
+
+  // 计算工时
+  const computedWorkTime = (a, b) => {
+    const startTime = new Date(a); // 将上班时间转化为Date对象
+    const endTime = new Date(b); // 将下班时间转化为Date对象
+    const workHours = (endTime - startTime) / (1000 * 60 * 60); // 计算工作时长，单位为小时
+    return workHours
+  }
 
 
 
@@ -694,9 +668,7 @@ export default function Index() {
                 <div id="top1">
                   <div className="rig">
                     <div id="mainForm" ></div>
-                    <Button type="primary" icon={<EditOutlined />} onClick={handleHit} >
-                      查看其他日期
-                    </Button>
+
                   </div>
 
 
@@ -719,84 +691,32 @@ export default function Index() {
                 <div className="col-md-12 stretch-card">
                   <div className="card">
                     <div className="card-body">
-                      <p className="card-title">Recent Purchases</p>
+                      <p className="card-title">打卡详细列表</p>
                       <div className="table-responsive">
                         <table id="recent-purchases-listing" className="table">
                           <thead>
                             <tr>
-                              <th>Name</th>
-                              <th>Status report</th>
-                              <th>Office</th>
-                              <th>Price</th>
-                              <th>Date</th>
-                              <th>Gross amount</th>
+                              <th>工号</th>
+                              <th>姓名</th>
+                              <th>打卡地点</th>
+                              <th>上班打卡时间</th>
+                              <th>下班打卡时间</th>
+                              <th>工作时长</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <tr>
-                              <td>Jeremy Ortega</td>
-                              <td>Levelled up</td>
-                              <td>Catalinaborough</td>
-                              <td>$790</td>
-                              <td>06 Jan 2018</td>
-                              <td>$2274253</td>
-                            </tr>
-                            <tr>
-                              <td>Alvin Fisher</td>
-                              <td>Ui design completed</td>
-                              <td>East Mayra</td>
-                              <td>$23230</td>
-                              <td>18 Jul 2018</td>
-                              <td>$83127</td>
-                            </tr>
-                            <tr>
-                              <td>Emily Cunningham</td>
-                              <td>support</td>
-                              <td>Makennaton</td>
-                              <td>$939</td>
-                              <td>16 Jul 2018</td>
-                              <td>$29177</td>
-                            </tr>
-                            <tr>
-                              <td>Minnie Farmer</td>
-                              <td>support</td>
-                              <td>Agustinaborough</td>
-                              <td>$30</td>
-                              <td>30 Apr 2018</td>
-                              <td>$44617</td>
-                            </tr>
-                            <tr>
-                              <td>Betty Hunt</td>
-                              <td>Ui design not completed</td>
-                              <td>Lake Sandrafort</td>
-                              <td>$571</td>
-                              <td>25 Jun 2018</td>
-                              <td>$78952</td>
-                            </tr>
-                            <tr>
-                              <td>Myrtie Lambert</td>
-                              <td>Ui design completed</td>
-                              <td>Cassinbury</td>
-                              <td>$36</td>
-                              <td>05 Nov 2018</td>
-                              <td>$36422</td>
-                            </tr>
-                            <tr>
-                              <td>Jacob Kennedy</td>
-                              <td>New project</td>
-                              <td>Cletaborough</td>
-                              <td>$314</td>
-                              <td>12 Jul 2018</td>
-                              <td>$34167</td>
-                            </tr>
-                            <tr>
-                              <td>Ernest Wade</td>
-                              <td>Levelled up</td>
-                              <td>West Fidelmouth</td>
-                              <td>$484</td>
-                              <td>08 Sep 2018</td>
-                              <td>$50862</td>
-                            </tr>
+                            {/* <tr> */}
+                            {Pdata.map(item => (
+                              <tr key={item.id}>
+                                <td>{item.id}</td>
+                                <td>{item.name}</td>
+                                <td>{item.location}</td>
+                                <td>{item.startTime}</td>
+                                <td>{item.endTime}</td>
+                                <td>{computedWorkTime(item.startTime, item.endTime).toFixed(2)}</td>
+                              </tr>)
+                            )
+                            }
                           </tbody>
                         </table>
                       </div>
@@ -808,8 +728,8 @@ export default function Index() {
 
             <footer className="footer">
               <div className="d-sm-flex justify-content-center justify-content-sm-between">
-                <span className="text-muted d-block text-center text-sm-left d-sm-inline-block">Copyright © bootstrapdash.com 2020</span>
-                <span className="float-none float-sm-right d-block mt-1 mt-sm-0 text-center"> Free <a href="https://www.bootstrapdash.com/" target="_blank">Bootstrap dashboard template</a> from Bootstrapdash.com</span>
+                <span className="text-muted d-block text-center text-sm-left d-sm-inline-block">本毕设利用Bootstrap开发</span>
+                <span className="float-none float-sm-right d-block mt-1 mt-sm-0 text-center"> 官网 <a href="https://www.bootstrapdash.com/" target="_blank">bootstrapdash</a></span>
               </div>
             </footer>
 
